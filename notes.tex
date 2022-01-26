@@ -1,0 +1,99 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{url}
+\usepackage{listings}
+
+\graphicspath{ {./images/} }
+\renewcommand{\baselinestretch}{1.5}
+\everymath{\displaystyle}
+
+\author{Erik-Cristian Seulean}
+\title{ML course notes and derivations}
+\date{\today}
+
+\begin{document}
+\newpage
+\maketitle
+
+\section{Linear models}
+
+Linear models are basically concerned with finding the relationship between a target variable (predicted) and a set of features. The relationship is linear in the coefficients not in the features. The features can be polynomials or combinations of them. 
+
+Generally we have: $$y = \beta_{0} + \beta_{1}x_{1} + ... + \beta_{n}x_{n} + \epsilon$$ 
+$$y = \beta_{0} + \beta_{1}x + \beta_{2}x^{2} ... + \beta_{n}x^{n} + \epsilon $$
+These can be combined, or we can even have interactions between features in the model.
+
+In statistics, where we are interested in inference, and what exactly the coefficients tell us. In that case, we would make sure that the features - $x$es are independent, and we would do checks such as variance inflation factors to make sure this is respected. However, ML is mostly interested in predictions, so this is not that much of a concern. Additionally, statistics would be also concerned about the assumptions of the model such as independence between different observation, constant variance and the sampling distribution of the data. ML abstracts most of these things out and ignores completely the assumptions.
+A concern that is present in ML is overfitting and underfitting the data. Models that fit the training that very well might not be able to perform well on newly seen observations, so there usually are procedures in place to verify the capabilities of a model on unseen data. This usually comes as cross-validation where a subset of the data is removed from the training set (usually 20\%) and it is used to assess the model performance on it. The error between the predicted and actual values is called generalization error. The generalization error is then used as a way to select between multiple models. Models with lower generalization error (without other considerations) are considered better as they perform better on the testing subset of data.
+
+\subsection{How to find the coefficients for the model ?}
+
+There are at least 3 ways of finding the coefficients. This is an optimization problem, which requires a loss function. There are multiple loss function that can be considered, but the most common ones are the OLS (Ordinary least squares), MSE (Mean squared error) or the mean absolute error.
+
+$$ MSE = \frac{1}{n}\sum_{i}^{n}(y_{i} - \hat{y}_{i})^{2}$$
+$$ \hat{y}_{i} = f(X, \theta) = \beta_{0} + \beta_{1}x$$ 
+$$ MSE = \frac{1}{n}\sum_{i}^{n}(y_{i} - \beta_{0} - \beta_{1}x)^{2}$$
+
+Here we consider the prediction $y_{i}$ as being a function of only one feature, but this can be generalized to multiple features.
+
+There are a few analytical methods to finding the coefficients. One is to consider $y_{i}$ and $x$ as random variables and use properties of random variables:
+$$Y = \beta_{0} + \beta_{1}X$$ 
+$$E(Y) = \beta_{0} + \beta_{1}E(X)$$
+$$Cov(Y, X) = Cov(\beta_{0} + \beta_{1}X, X) = \beta_{1}Var(X)$$
+$$\beta_{0} = E(Y) - \beta_{1}E(X)$$
+$$\beta_{1} = \frac{Cov(X, Y)}{Var(X)}$$
+
+This however does not generalize well, so it's mostly theoretical. I do like it however as it's simple and easy to get (perhaps might come useful in an interview). 
+
+An alternative is to consider this as a minimization problem and find the places where the partial derivatives with respect to the coefficients are 0.
+
+$$ \frac{\partial{MSE}}{\partial\beta_{0}} = \frac{1}{n}\sum_{1}^{n}2(y_{i} - \beta_{0} - \beta_{1}x_{i})(-1) = 0$$
+$$ \sum_{1}^{n}(y_{i} - \beta_{0} - \beta_{1}x_{i}) = 0 $$
+$$ n\bar{y} - n\beta_{0} - \beta_{1}n\bar{x} = 0$$
+$$ \beta_{0} = \bar{y} - \beta_{1}\bar{x} $$
+
+The equation is the same as in the random variable case, we just used the sample to get there.
+
+$$ \frac{\partial{MSE}}{\partial\beta_{1}} = \frac{1}{n}\sum_{1}^{n}2(y_{i} - \beta_{0} - \beta_{1}x)(-x_{i}) = 0 $$
+$$ \sum_{1}^{n}({y_{i}x_{i} - \beta_{0}x_{i}} - \beta_{1}x_{i}^{2}) = 0$$
+
+Substituting $\beta_{0}$ found above we get:
+$$ \sum_{1}^{n}(y_{i}x_{i} - (\bar{y} - \beta_{1}\bar{x})x_{i} - \beta_{1}x_{i}^2) = 0$$
+$$\sum_{1}^{n} (y_{i}x_{i} - \bar{y}x_{i} - \beta_{1}\bar{x}x_{i} - \beta_{1}x_{i}^2) = 0$$
+$$\sum_{1}^{n}(y_{i}x_{i} - \bar{y}{x_{i}}) - \beta_{i}\sum_{1}^{n}(\bar{x}x_{i} - x_{i}^2) = 0$$
+$$\beta_{1} = \frac{\sum_{1}^{n}(y_{i}x_{i} - \bar{y}{x_{i}})}{\sum_{1}^{n}(\bar{x}x_{i} - x_{i}^2)}$$
+
+It turns out that this generalizes, and you can actually use this to get the coefficients for multiple linear regressions following the same patter. It gets messy in higher dimensions, but the matrix notation can actually help with this.
+
+\begin{equation*}
+    Y = 
+    \begin{bmatrix}
+    y_{0} \\ y_{1} \\ \vdots \\ y_{n}
+    \end{bmatrix} = 
+    \underbrace{
+    \begin{bmatrix}
+        1 & x_{0} \\ 1 & x_{1} \\ \vdots & \vdots \\ 1 & x_{n}
+    \end{bmatrix}
+    }_{X}
+    \underbrace{
+    \begin{bmatrix}
+        \beta_{0} \\ \beta_{1}
+    \end{bmatrix}}_{\beta}
+\end{equation*}
+$$ Y = X\beta $$
+Now we can rewrite the MSE equation in matrix notation, and we can apply the same principle, but given that we have now all the coefficients "clustered" together into a matrix, we will only have one differential equation that we need to check.
+
+$$RSS = (Y - X\beta)^{T}(Y - X\beta)$$
+$$\frac{\partial{RSS}}{\partial{\beta}} = -X^{T}(Y-X\beta) + -X(Y-X\beta)^{T} = 0$$
+$$\frac{\partial{RSS}}{\partial{\beta}} = -2X^{T}(Y-X\beta)= 0$$
+$$X^{T}Y - X^{T}X\beta = 0$$
+$$X^{T}X\beta = X^{T}Y$$
+$$\beta = (X^{T}X)^{-1}X^{T}Y$$
+
+It's worth mentioning that this analytical solution is much faster (due to the nature of the way matrices are represented in memory and the way operations are resolved) but it's still analytical.
+\maketitle
+
+\end{document}\models
