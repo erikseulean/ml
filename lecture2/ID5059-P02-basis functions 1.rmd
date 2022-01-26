@@ -1,0 +1,283 @@
+---
+title: "ML from scratch"
+author: "C. Donovan"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Some ML principles
+
+The purpose here is to look at some general principles that link many ML models.
+
+* The complexity of the model should be adaptive to the data
+* Given a particular candidate model, we fit to the with an appropriate loss function
+* Choosing between models uses generalisation error - ideally __evaluate models on data not used in their fitting__ 
+
+
+We'll take a simple dataset, and build a familiar model with these principles in mind.
+
+
+# Some data
+
+We'll use the ubiquitous `mcycle` data - the acceleration/deceleration of a crash-test dummy, over time, in a motor-cycle crash. It's popular as it has quite complex signal and errors.
+
+```{r include=F}
+  
+#= I use this all the time, thanks Hadley Wickham
+
+  library(tidyverse)
+
+#= use the mcyle data in the MASS library
+
+  library(MASS)
+  data(mcycle)
+
+```
+
+
+```{r}
+
+  head(mcycle)
+  
+  
+  p <- ggplot(data=mcycle) +
+      geom_point(aes(x=times, y=accel), col='purple', size=1.5) +
+      xlab('time (ms)') + ylab('acceleration') + ggtitle('A wiggly relationship') +
+      theme_light()
+
+  p
+
+```
+
+
+# Generate $f$
+
+We want some _process_ that generates models of varying complexity. We can use polynomials as a simple example - they scale easily. To emphasise that we're adding functions together, I'll construct a basis matrix to start.
+
+```{r}
+
+  # to emphasise the basis matrix - intercept and linear term.
+  f1Basis <- data.frame(y = mcycle$accel, x0 = 1, x1 = mcycle$times)
+  head(f1Basis)
+  
+```
+
+__Given__ some function $f$, choose some way to fit it to the data - use a _loss_ function to define what are good parameter values. Put simply here - I want $\hat{y}$ to be close to $y$ - I'll used squared-error loss, same as OLS regression.
+
+```{r}
+
+  # No intercept, I've got it already
+  f1Fitted <- lm(y ~ . -1, data = f1Basis)
+  summary(f1Fitted)
+  
+  f1Predicted <- f1Basis %>% mutate(yhat = fitted(f1Fitted)) %>% arrange(x1)
+  
+  p + geom_line(data = f1Predicted, aes(x1, yhat), col = 'blue', alpha = 0.6)
+
+
+```
+
+Clearly pretty poor - if it were classical statistics I would now look to fit statistics, inference and assumptions. No need, we're evaluating solely on predictive performance. Fair to say it's not complex enough. Let's go big.
+
+# Consider different $f$
+
+I can turn up the complexity by turning a handle - the degree parameter. Twenty is plenty, by way of example.
+
+```{r}
+
+  # a complex model
+  fbigFitted <- lm(accel ~ poly(times, 20), data = mcycle)
+  
+  fbigPredicted <- mcycle %>% mutate(yhat = fitted(fbigFitted)) %>% arrange(times)
+  
+  p + geom_line(data = fbigPredicted, aes(times, yhat), col = 'blue', alpha = 0.6)
+  
+```
+
+Is that good? Better at least. But, we want to take the human out of this a bit. 
+
+# Basis functions
+
+Polynomials are constructed from a bunch of monomials - you can think of these as basis functions. Every additional monomial adds a column to $\mathbf{X}$. They look like this:
+
+```{r}
+  
+  # construct using "raw" polynomials - usually you'd use orthogonal, but those are details
+  f4Basis <- cbind(1, poly(mcycle$times, 4, raw = T))
+  head(f4Basis)  
+
+  par(mfrow = c(2,3))  
+
+  for(i in 1:5){
+    plot(mcycle$times, f4Basis[,i], xlab = "Time", ylab = "Basis value", type = 'l')
+  }
+
+```
+
+Again, given $f$, fit to the data using our squared-error loss.
+
+```{r}
+
+  # fit that back to our data - several basis functions
+  f4Basis <- data.frame(y = mcycle$accel, f4Basis)
+  f4Fitted <- lm(y ~ ., data = f4Basis)
+  
+  f4Predicted <- f4Basis %>% mutate(yhat = fitted(f4Fitted)) %>% arrange(X1)
+  
+  p + geom_line(data = f4Predicted, aes(X1, yhat), col = 'blue', alpha = 0.6)
+
+```
+
+# Create an $f$ generating process
+
+To make this ML-like, we want our process to search over differing complexities. Here I create a bunch of candidate $f$ of increasing complexity by turning the handle on the polynomial degree.
+
+
+```{r}
+
+  # make lots of f
+  
+  basisList <- list()
+
+  for(i in 1:20){
+    
+    basisList[[i]] <- data.frame(y = mcycle$accel, poly(mcycle$times, degree = i, raw = T))
+  
+    }
+  
+  # fit them all using OLS 
+
+  modelList <- lapply(basisList, function(q){lm(y~., data = q)})
+
+```
+
+With that in hand, which is best? We can't use $R^2$ or residual error - this is not generalisation error and will __always__ favour the complex model. I can cheat a little - the adjusted $R^2$ has a penalty for the number of parameters.
+
+```{r}
+
+  adjRsq <- lapply(modelList, function(q){summary(q)$adj.r.squared}) %>% unlist()
+
+  which.max(adjRsq)
+
+```
+
+The best one is model 12 - let's look at it.
+
+```{r}
+
+  bestModel <- basisList[[12]] %>% mutate(yhat = fitted(modelList[[12]])) %>% arrange(X1)
+  
+  p + geom_line(data = bestModel, aes(X1, yhat), col = 'blue', alpha = 0.6)
+
+```
+
+
+Polynomials are a bit old school. Splines, like seen in Generalised Additive Models, are superior. This is just a simple change of basis - here I'll use cubic $b$-spline bases. Fit with squared error loss.
+
+```{r}
+
+  # make lots of f
+  library(splines)  
+
+  basisList <- list()
+
+  for(i in 1:20){
+    
+    basisList[[i]] <- data.frame(y = mcycle$accel, bs(mcycle$times, df = i+2))
+  
+    }
+  
+
+  modelList <- lapply(basisList, function(q){lm(y~., data = q)})
+
+```
+
+Determine which is best.
+
+
+```{r}
+
+  adjRsq <- lapply(modelList, function(q){summary(q)$adj.r.squared}) %>% unlist()
+
+  which.max(adjRsq)
+
+```
+
+Which gives us:
+
+```{r}
+
+  bestModel <- basisList[[9]] %>% mutate(yhat = fitted(modelList[[9]])) 
+  
+  p + geom_line(data = bestModel, aes(mcycle$times, yhat), col = 'blue', alpha = 0.6)
+
+```
+
+A superior fit with less parameters (polynomials have an undesirable global behaviour). This is due to the local nature of the $b$-splines.
+
+# Use a good measure of generalisation error
+
+To make this really like ML, we should base it on a direct measure of generalisation error, rather than rely on a penalised fit measure. One good reason is that the penalties are theoretically derived and may not apply generally - the number of parameters isn't always a good measure of complexity.
+
+
+```{r}
+
+  # create a train and validation set
+  set.seed(234324)
+  
+  # about 60% for training
+  trainInd <- sample(1:nrow(mcycle), size = 80, replace = F)  
+
+  trainDat <- mcycle[trainInd,]
+
+  validationDat <- mcycle[-trainInd,]
+  
+ # make lots of f and fit them with OLS
+  
+  error <- numeric(30)
+ 
+  for(i in 1:30){
+    
+    currentModel <- lm(accel ~ bs(times, df = i+3, Boundary.knots = c(min(mcycle$times), max(mcycle$times))), data = trainDat)
+    
+    yhat <- predict(currentModel, newdata = validationDat)
+    
+    error[i] <- sum((validationDat$accel - yhat)^2)     
+    
+    }
+  
+```
+
+Determine which is best, this time based on the validation data.
+
+
+```{r}
+
+  plot(error, xlab = "Polynomial degree", ylab = "Validation error", type = 'b')  
+
+```
+
+In truth, anything with around 5 to 10 knots seems OK for this validation data. Pretty small dataset, so I'd be concerned about sensitivity to dividing up the data for test/train.
+
+# Was this ML?
+
+Somewhat, but pretty restrictive. We _are_ following common principles though:
+
+* Consider the nature of our $y$ and $x$s to inform the modelling
+* Devise/use a process for generating $f$ of varying complexity
+* _Given_ $f$, fit to the data with an appropriate loss function
+* Select between the models based on generalisation error i.e. control the complexity, avoid over/under-fitting
+
+
+If we used a different approach to basis formation it could be our next set of models, trees.
+
+
+
+
+

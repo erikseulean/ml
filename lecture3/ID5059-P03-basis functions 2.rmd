@@ -1,0 +1,181 @@
+---
+title: "ID5059 - L03 - more basis functions"
+author: "C. Donovan"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r, include=FALSE}
+
+  library(splines); library(ggplot2); library(rgl); library(fields)
+  library(MASS); data(mcycle) # for the mcycle data
+```
+
+
+## B-splines
+
+
+Here we'll use b-spline to construct some $f$ of varying complexity. This principle applies to later models, by combining smaller, simpler, functions to construct something complicated. We can fit a model at any point against an appropriate _loss function_ i.e. estimate the best parameters. We use some measure of generalisation error to determine how complicated the model ought to be e.g. how many simple building blocks to use (more being more complex).
+
+For this type of model, we specify _knots_, which specify the boundaries of the building blocks. Splines are heavily studied and there is a lot of theory - here we're only interested in them as an example of a principle. 
+
+```{r}
+
+  # Specify knots - the boundaries of bases. More is more complex
+
+  knots<- quantile(mcycle$times, probs=seq(0,1,by=0.1))
+  
+  # This creates a basis matrix of degree 1 b-splines (linear)
+  basisMatrix<- bs(mcycle$times, knots=knots[-11], degree = 1)
+  
+  # Note every row sums to 1 - this property ensures continuity for the final curve
+  apply(basisMatrix, 1, sum)
+  
+  # the bases look like this WRT the x-variable "times" - bit ugly due to small dataset
+  matplot(basisMatrix, type='l', col='black')
+  
+  # given the basis matrix, use OLS as the loss function - f is a linear combination of bases
+  fittedCubic<- lm(accel~basisMatrix-1, data=mcycle)  
+  
+  # which gives this result fitted to the data
+  plot(mcycle)
+  
+  lines(mcycle$times, fitted(fittedCubic), col='blue', lwd=2)
+```
+
+Do as before, but now use cubic bases - this will make for a smoother result.
+
+```{r}
+
+  
+  basisMatrix<- bs(mcycle$times, knots=knots[-11])
+  
+  matplot(basisMatrix, type='l', col='black', lwd=3)
+  
+  fittedCubic<- lm(accel~basisMatrix-1, data=mcycle)  
+  
+  # plot - a little prettier
+  plot(mcycle$times, mcycle$accel, col='purple1', pch=21, bg='grey', 
+       xlab='Times', ylab='Acceleration', main='Fitted cubic b-splines')
+  
+  lines(mcycle$times, fitted(fittedCubic), col='orange', lwd=2)
+```
+ 
+```{r}
+  par(mfrow=c(2,1))
+  
+  # plot - a little prettier
+  plot(mcycle$times, mcycle$accel, col='purple1', pch=21, bg='grey', 
+       xlab='Times', ylab='Acceleration', main='Fitted cubic b-splines')
+  
+  lines(mcycle$times, fitted(fittedCubic), col='orange', lwd=2)
+  
+  abline(v=knots)
+  
+  # evaluate the bases on a finer scale 
+  
+  gridTimes<- seq(min(mcycle$times), max(mcycle$times), length=200)
+  
+  basisMatrix<- bs(gridTimes, knots=knots[-11])
+  
+  matplot(gridTimes, basisMatrix, type='l', col='black', lwd=3)
+  
+  abline(v=knots)
+```
+
+## Higher dimesional bases
+
+If we're dealing with more covariates/features, then the bases may be in more dimensions. We'll see this in later models e.g. tree methods and NNs. The dimension is often large, although within the dimension of the covariate/feature space.
+
+Start with the simplest thing around - piecewise constants. 
+
+```{r}  
+
+  #= Produce some contrived data
+  
+    Covariate1<- seq(0, 10, length=100)
+    Covariate2<- seq(20, 40, length=100)
+ 
+  
+  #= Define a simple marginal basis function as 1 if 5<=x1<9, zero elsewhere
+    BlockBasisX1<- ifelse(Covariate1>=5&Covariate1<9, 1, 0)
+    plot(Covariate1, BlockBasisX1, type='l', ylab='Basis value', xlab='Covariate 1')
+  
+  #= Define a simple marginal basis function as 1 if 25<=x2<32, zero elsewhere
+    BlockBasisX2<- ifelse(Covariate2>=25&Covariate2<32, 1, 0)
+    plot(Covariate2, BlockBasisX2, type='l', ylab='Basis value', xlab='Covariate 2')
+    
+  #= Develop a simple 2D variant from these
+    
+    TwoDimensionalBlock<- BlockBasisX1%*%t(BlockBasisX2)
+    persp(Covariate1, Covariate2, TwoDimensionalBlock, theta=30, phi=30)
+```
+
+As before, we change the nature of the curves by using a different basis type. Here we build with smooth bases to move towards a smooth $f$.
+    
+```{r}    
+  #= Repeat this process for a cubic b-spline basis
+  
+  #= Create b-spline sets for both covariates
+    
+    
+    BSMatrixX1<- bs(Covariate1, knots=c(3,6))
+    BSMatrixX2<- bs(Covariate2, knots=c(25, 30, 35))
+    
+    matplot(Covariate1, BSMatrixX1, type='l', lty=3, xlab='Covariate 1', ylab='Basis function value', col=1)
+    abline(v=c(3,6), lty=2, col='blue') # knot locations
+    
+    matplot(Covariate2, BSMatrixX2, type='l', lty=3, xlab='Covariate 2', ylab='Basis function value', col=1)
+    abline(v=c(25, 30, 35), lty=2, col='blue') # knot locations
+```
+
+
+Multiplying these into 2-D space still retains their inherent smoothness.
+
+```{r}
+  #= Create a tensor version from a couple of these
+    
+    BSplineTensor<- BSMatrixX1[,3]%*%t(BSMatrixX2[,5])
+    
+    #= plot the marginal bases we will combine
+    plot(Covariate1, BSMatrixX1[,3], xlab='Covariate 1', ylab='Basis value', type='l')
+    plot(Covariate2, BSMatrixX2[,5], xlab='Covariate 2', ylab='Basis value', type='l')
+    
+    #= pretty-ish pictures of the combination
+    image(Covariate1, Covariate2, BSplineTensor, xlab='Covariate 1', ylab='Covariate 2', col=tim.colors(n=30))
+    persp(Covariate1, Covariate2, BSplineTensor, xlab='Covariate 1', ylab='Covariate 2', theta=30, phi=30)
+```
+
+
+The following will give a little interactive 3-D version using the library `RGL`. It will open in its own window.
+
+```{r}
+#============================================================================================#
+  #= Do pretty much the same thing, but in RGL for a laugh
+  
+  open3d()
+  
+  #= setups
+  bg3d(color="#887777")
+  light3d()
+  
+  #= put the surface in for the bivariate basis function - scale z a bit as it is relatively small
+
+  surface3d(Covariate1,Covariate2, 20*BSplineTensor,color="purple",alpha=0.5, front="lines")
+  
+  #= add the univariate bases that generated the bivariate one
+  
+  rgl.lines(Covariate1, rep(45, length(Covariate1)), 10*BSMatrixX1[,3],col="#000000", lwd=2)
+  rgl.lines(rep(1, length(Covariate2)), Covariate2, 10*BSMatrixX2[,5],col="#000000", lwd=2)
+  
+  #= stick a wee box around all this. Note z scale is not what is actually in the data for disply purposes
+  bbox3d(col='white', alpha=0.5)
+
+``` 
+
+
