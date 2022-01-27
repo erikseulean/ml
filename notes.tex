@@ -29,7 +29,7 @@ These can be combined, or we can even have interactions between features in the 
 In statistics, where we are interested in inference, and what exactly the coefficients tell us. In that case, we would make sure that the features - $x$es are independent, and we would do checks such as variance inflation factors to make sure this is respected. However, ML is mostly interested in predictions, so this is not that much of a concern. Additionally, statistics would be also concerned about the assumptions of the model such as independence between different observation, constant variance and the sampling distribution of the data. ML abstracts most of these things out and ignores completely the assumptions.
 A concern that is present in ML is overfitting and underfitting the data. Models that fit the training that very well might not be able to perform well on newly seen observations, so there usually are procedures in place to verify the capabilities of a model on unseen data. This usually comes as cross-validation where a subset of the data is removed from the training set (usually 20\%) and it is used to assess the model performance on it. The error between the predicted and actual values is called generalization error. The generalization error is then used as a way to select between multiple models. Models with lower generalization error (without other considerations) are considered better as they perform better on the testing subset of data.
 
-\subsection{How to find the coefficients for the model ?}
+\subsection{How to find the coefficients for the model ? The analytical way.}
 
 There are at least 3 ways of finding the coefficients. This is an optimization problem, which requires a loss function. There are multiple loss function that can be considered, but the most common ones are the OLS (Ordinary least squares), MSE (Mean squared error) or the mean absolute error.
 
@@ -69,10 +69,10 @@ $$\beta_{1} = \frac{\sum_{1}^{n}(y_{i}x_{i} - \bar{y}{x_{i}})}{\sum_{1}^{n}(\bar
 It turns out that this generalizes, and you can actually use this to get the coefficients for multiple linear regressions following the same patter. It gets messy in higher dimensions, but the matrix notation can actually help with this.
 
 \begin{equation*}
-    Y = 
+    \underbrace{
     \begin{bmatrix}
     y_{0} \\ y_{1} \\ \vdots \\ y_{n}
-    \end{bmatrix} = 
+    \end{bmatrix}}_{Y} = 
     \underbrace{
     \begin{bmatrix}
         1 & x_{0} \\ 1 & x_{1} \\ \vdots & \vdots \\ 1 & x_{n}
@@ -93,7 +93,40 @@ $$X^{T}Y - X^{T}X\beta = 0$$
 $$X^{T}X\beta = X^{T}Y$$
 $$\beta = (X^{T}X)^{-1}X^{T}Y$$
 
-It's worth mentioning that this analytical solution is much faster (due to the nature of the way matrices are represented in memory and the way operations are resolved) but it's still analytical.
+It's worth mentioning that this analytical solution is much faster (due to the nature of the way matrices are represented in memory and the way operations are resolved) but it's still analytical. The inverse might not exist, so we might need to use a pseudo-inverse (if the matrix is singular). 
+
+\subsection{How to find the coefficients for the model ? The iterative way}
+
+We can reuse what we have above, but instead we're interested in the slope only $\frac{\partial{MSE}}{\partial{\beta_{0}}}$, $\frac{\partial{MSE}}{\partial{\beta_{0}}}$. There are two cases that need to be considered: first is when the slope is positive, in that case we need to decrease the value of the coefficients (as we move from right to left) and when the slope is negative, in that case we need to increase the value of the coefficients (as we move from left to right).
+
+In this case we have: 
+
+$$\beta_{0} = \beta_{0} - \alpha * \frac{\partial{MSE}}{\partial{\beta_{0}}}$$
+$$\beta_{1} = \beta_{1} - \alpha * \frac{\partial{MSE}}{\partial{\beta_{1}}}$$
+
+$$\beta_{0} = \beta_{0} - \alpha * \frac{2}{n} \sum_{1}^{n}(\beta_{1}x_{i} + \beta_{0} - y_{i})$$
+$$\beta_{1} = \beta_{1} - \alpha * \frac{2}{n} \sum_{1}^{n}2x_{i}(\beta_{1}x_{i} + \beta_{0} - y_{i})$$
+
+Alpha is the learning rate, that is the step, which controls how big are the steps in the direction of the global (or local) minima. The function itself is not always convex, but this shouldn't affect the algorithm. 
+
+The algorithm starts by setting random starting points for the coefficients and update the values of the coefficients iteratively until the change in the values are very small. At this point we can say that the algorithm converged towards a minimum (which could be the local minima) and we can stop.
+
+The downside of the algorithm above is that we need to use all the points in the dataset for every step of the optimization, which is extremely expensive (especially for large datasets). 
+
+Additional optimization exists that use a bootstrapping mechanism to select a subset of the observations to compute the slopes or just one single observation at a time. These are theoretically worse in terms of convergence however practically there's little downsides to them.
+
+The matrix notation for the above is:
+
+$$\beta = \beta - \frac{2}{n}X^{T}(X\beta - Y)$$
+
+\section{A note on complexity}
+Basically if matrix X is $n \times n$ then we have n linear equations. That means that finding the inverse is an $O(n^3)$ (By the LU decomposition following the Gauss-Jordan echelon form [I need to learn more about this :)]) so if we double the number of features (instead of n to 2n) the complexity is 8 times higher. That's a lot! This means that the matrix operations are not as efficient as I expected.
+
+This is the reason why we use iterative solutions that don't use the matrix form (and use stochastic solutions) to avoid computing the inverse of the matrix.
+
+\section{Gradient Descent variations} 
+There are 3 variations that I read about: the basic one, which just uses the entire matrix to find the slope, stochastic and batch. The stochastic gradient descent uses only 1 observation from the dataset to compute the gradient, which means that it is faster as it doesn't have to compute the pseudoinverse for a very large matrix. This also helps to get out of local minimums and eventually converge to the global minimum.
+
 \maketitle
 
 \end{document}\models
