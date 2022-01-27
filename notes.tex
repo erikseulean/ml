@@ -125,7 +125,7 @@ Basically if matrix X is $n \times n$ then we have n linear equations. That mean
 This is the reason why we use iterative solutions that don't use the matrix form (and use stochastic solutions) to avoid computing the inverse of the matrix.
 
 \section{Gradient Descent variations} 
-There are 3 variations that I read about: the basic one, which just uses the entire matrix to find the slope, stochastic and batch. The stochastic gradient descent uses only 1 observation from the dataset to compute the gradient, which means that it is faster as it doesn't have to compute the pseudoinverse for a very large matrix. This also helps to get out of local minimums and eventually converge to the global minimum.
+There are 3 variations that I read about: the batch, stochastic and minibatch. The stochastic gradient descent uses only 1 observation from the dataset to compute the gradient, which means that it is faster as it doesn't have to compute the pseudoinverse for a very large matrix. This also helps to get out of local minimums and eventually converge to the global minimum. Minibatch is a combination of the two, where instead of using only one observation or the entire training set, it uses a subset of the training set. This solution is apparently faster on GPUs.
 
 \maketitle
 
