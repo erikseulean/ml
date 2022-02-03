@@ -119,13 +119,71 @@ The matrix notation for the above is:
 
 $$\beta = \beta - \frac{2}{n}X^{T}(X\beta - Y)$$
 
-\section{A note on complexity}
+\subsection{A note on complexity}
 Basically if matrix X is $n \times n$ then we have n linear equations. That means that finding the inverse is an $O(n^3)$ (By the LU decomposition following the Gauss-Jordan echelon form [I need to learn more about this :)]) so if we double the number of features (instead of n to 2n) the complexity is 8 times higher. That's a lot! This means that the matrix operations are not as efficient as I expected.
 
 This is the reason why we use iterative solutions that don't use the matrix form (and use stochastic solutions) to avoid computing the inverse of the matrix.
 
-\section{Gradient Descent variations} 
+\subsection{Gradient Descent variations} 
 There are 3 variations that I read about: the batch, stochastic and minibatch. The stochastic gradient descent uses only 1 observation from the dataset to compute the gradient, which means that it is faster as it doesn't have to compute the pseudoinverse for a very large matrix. This also helps to get out of local minimums and eventually converge to the global minimum. Minibatch is a combination of the two, where instead of using only one observation or the entire training set, it uses a subset of the training set. This solution is apparently faster on GPUs.
+
+
+\section{Logistic regression}
+
+Logistic regression is used for classification algorithms. Basically, you're looking for a boundary between two or more classes, and you want to separate the classes based on the features that you have in your dataset. In order to do this, instead of assigning labels to your outcomes (0 or 1, A or B or C) you can assign a probability of being in a particular class. For a simple binary classifier, this means that if your probability is under the treshold you can classify the observation as 0 otherwise as 1.
+
+This ML model is mostly a variation of a typical Binomial model (or Bernoulli) where we use the logit link function. Hence, we have:
+
+$$log(\frac{p}{1 - p}) = \beta_{0} + \beta_{1}x_{0} + ... + \beta_{p}x_{p}$$
+$$p = \frac{e^{\beta_{0} + \beta_{1}x_{0} + ... + \beta_{p}x_{p}}}{1 + e^{\beta_{0} + \beta_{1}x_{0} + ... + \beta_{p}x_{p}}} = \frac{e^{h(\beta^{T}x)}}{1 + e^{h(\beta^{T}x)}} = \frac{1}{1 + e^{-h(\beta^{T}x)}}$$
+
+After we find the coefficients of the model, we can plug in the numbers and get the probability, which can be used to get the most probable class. Higher values for $h(\beta^{T}x)$ the closer the probability is to 1 and vice versa.
+
+\subsection{Finding coefficients for logisic regression}
+In order to find the coefficients, we need to come up with a cost function which we can use for optimization. A good cost function would make sure that we get a high penalty when the probability is low, but the class is 1 and when the probability is high, but the class is 0. The negative logarithm function would probably be suitable, since the logarithm function grows as the values increase from 0 to 1. So in other words, if the probability is low, the penalty is going to be high for observations with class 1.
+
+\begin{figure} [H]
+    \centering
+    \textbf{Log function}\par\medskip
+    \begin{minipage}{.5\textwidth}
+      \centering
+      \includegraphics[width=0.8\linewidth]{logarithm.png}
+      \caption{Logarithm}
+      \label{fig:Logarithm function on (0, 1)}
+    \end{minipage}%
+    \begin{minipage}{.5\textwidth}
+      \centering
+      \includegraphics[width=0.8\linewidth]{minlog.png}
+      \caption{Minus logarithm}
+      \label{fig:Minus logarithm on (0, 1)}
+    \end{minipage}
+\end{figure}
+
+With this in mind we have:
+
+\begin{enumerate}
+    \item $-log(p)$ for $y=1$
+    \item $-log(1-p)$ for $y=0$
+\end{enumerate}
+
+and cost function $$J = \frac{1}{n}\sum_1^{n}(-y_{i}log(p_{i}) - (1-y_{i})log(1-p_{i})))$$
+
+We can apply the same gradient descent algorithm, as the cost function in this case is convex (this can be proved by checking the sign of the second derivative). 
+
+$$\frac{\partial J}{\partial \beta} = \frac{\partial J}{\partial h} \frac{\partial h}{\partial \beta^{T}x}\frac{\partial \beta^{T}x}{\partial \beta^{T}}$$
+
+$$\sigma(x) = \frac{e^{x}}{1 + e^{x}}$$
+$$\sigma(x)' = \sigma(x)(1 - \sigma(x))$$
+
+$$\frac{\partial{J}}{\partial{h}} = -\frac{1}{n}\sum_{1}^n(y_{i}\frac{1}{h(\beta^{t}x)} * \frac{\partial{h}}{\partial{\beta^{T}x}} + (1-y_{i})\frac{1}{1 - h(\beta^{t}x))}\frac{\partial{(1 - h(\beta^{t}x))}}{\beta^{T}x})$$
+$$= -\frac{1}{n}\sum_{1}^n(y_{i})\frac{1}{h(\beta^{t}x)}h(\beta^{T}x)(1 - h(\beta^{T}x)x - (1 - y_{i})\frac{1}{1 - h(\beta^{t}x))}h(\beta^{T}x)(1 - h(\beta^{T}x))x)$$
+$$= -\frac{1}{n}\sum_{1}^{n}(y_{i}(1 - h(\beta^{T}x))x - (1 - y_{i})h(\beta^{T}x)x)$$
+$$= -\frac{1}{n}\sum_{1}^{n}(y_{i} - y_{i}h(\beta^{T}x) - h(\beta^{T}x) + y_{i}h(\beta^{T}x))x$$
+$$= -\frac{1}{n}\sum_{1}^{n}(y_{i} - h(\beta^{T}x))x$$
+
+The logistic regression gradient is the same as the linear regression one, with the difference being the sigmoid function.
+In matrix notation:
+$$\beta = \beta - \frac{1}{n}(h(\beta^{T}X)- Y)X$$
 
 \maketitle
 
