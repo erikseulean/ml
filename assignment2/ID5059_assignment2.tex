@@ -1,0 +1,55 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{url}
+\usepackage{listings}
+\usepackage[a4paper,left=3cm,right=2cm,top=2.5cm,bottom=2.5cm]{geometry}
+
+
+\renewcommand{\baselinestretch}{1.5}
+\everymath{\displaystyle}
+\date{}
+
+\title{IEEE-CIS Fraud Detection - Gradient Boosting with 93\% accuracy}
+
+\begin{document}
+\newpage
+\maketitle
+
+This document describes the modelling performed to detect credit card fraud on a dataset provided by Vesta Corporation as part of the IEEE-CIS Fraud Detection Kaggle competition \cite{kaggle}. 
+
+The data, represents credit card transactions and over 400 associated features that should help predict if a transaction is fraudulent or not. Better accuracy models help increase customer satisfaction and ensures that there is less money lost. The transactions in the dataset are real world e-commence transactions and does not contain any synthetic data. The dataset provided on Kaggle, already has a test and train split, with the train dataset containing 590,000 observations and 500,000 observations in the test dataset. In addition to the challenge given by the large amount of data, the dataset has the feature names obfuscated for security reasons, which brings an additional level of complexity. For the purpose of this assignment, the exploratory analysis part was done based on existing Kaggle notebooks that provide insights into the meaning of these columns and apply dimensionality reduction principles, such as PCA or predictive power analysis in order to speed up model fitting and avoid overfitting.
+
+As we decided to focus on different models and compare the results at the end (and eventually average them), I decided to work with Boosting algorithms and gradually improve the performance. Boosting algorithms work by iteratively adding more classifiers or regressors to an ensamble, each of the learners improving the predictions of the previous learner. The principle of this family of algorithms is to initially assign equal weights to all observations in the training dataset, perform classification, and boost the weights of the observations that had wrong predictions. The next iterations of the algorithm will sample observations from the training dataset using the updated weights (or include the weights in the learning process), and fit a new classifier. The process is repeated until the predictions don't improve anymore. In general, boosting algorithms can work with any classifier, and as a choice I decided to work with Classification Trees. Classification trees are binary decision trees that use the features in the dataset to split between observations. Each internal node of the binary tree represents a decision (either continuous or categorical variable), while leaves (or terminal nodes) represent a subset of the initial observations that will yield the same class label or prediction.
+
+The first model that I fitted was the GradientBoosting algorithm existing in sklearn. Unfortunately this has two downsides. First it cannot handle missing values by default, for which the solution would be fairly easy - just replace the missing value with a default value or remove the rows containing it. Second, it does not do any preprocessing of the features, meaning that for continuous variables it would take a long time to find the optimal split at a particular node. To circumvent these problems, I switched to use the HistGradientBoosting classifier which by default handles missing values and does preprocessing of the data. The preprocessing done is based on the fact that the continuous variables are binned first, reducing the space the classifier would have to consider splits. For example, for a feature that represents age, instead of considering all possible ages as split points, we first represent age ranges $0-10, 10-20, \cdots , 90-10$ and find the split point.
+
+The HistGradientBoosting without any feature engineering and naively considering all the features in the dataset runs for about 3 hours and has a prediction accuracy of about 70\% on the public test, without considering k-fold cross validation. I soon realized that I need a faster feedback loop in order to improve, and I considered trying the following things: reduce the feature space (e.g. drop features without prediction power), consider faster models and running the model on a machine that has GPU support. While boosting algorithms cannot be fully parallelized at tree level, due to the nature of iterative learning based on previous misclassifications, I was looking for an implementation that takes leverage of the fact that for a binary tree, the left branch and the right branch can be further split apart in parallel. XGBoost (Extreme Gradient Boosting) from a model perspective it works in the same way as HistGradientBoosting, but it has a performance boost by doing tree level parallelization and being written in C++ rather than Python. From here onwards, I used XGB and stuck with it for the rest of the modelling.
+
+The biggest jump in model accuracy was to consider engineering features in the initial dataset. While I managed to reduce the features down to about half, by standing on the shoulders of Kaggle giants and remove everything that did not have prediction power, I went further and added a few extra features that improved the performance of the classifier. The idea behind these features is to create features that would allow spotting anomalies. E.g. transaction amounts originating from the same card that have standard deviation 0 are dubious. Transactions that use an obscure email domain again are suspicious. By adding these to the model, the performance of the classifier jumped up to about 88\% on the public test. This was before trying to do hyperparameter tuning or even trying cross validation. 
+
+In order to improve further on this model, I tried to tune the parameters of the model. So far everything was running using the default parameters, but I was sure that there's going to be a boost in accuracy with better parameters. Given that at this point I didn't have a very powerful machine at hand, I decided to start with a very small subset of the data and keep increasing the subset until the hyperparameters don't change anymore. My intuition on this is that, if the sample size increases, given that the hyperparameters come from a distribution, they will likely get to converge to the true mean and will stop changing. This was exactly the case, and after about 70,000 observations the hyperparameters didn't change anymore, and I decided to use them in my model. This improved further with about 2\%. Using this method, the classifier will use 8\% of all the observations in the training set for each tree and 4\% of all the existing columns for each node split in the tree, while the maximum depth of a tree is 12.
+
+The last thing that I wanted to try was running K-fold cross validation. At this point, I managed to find (again with the help of Kaggle community) that the dataset is considered to have a start date, and the transactions are from this start date onwards. Using the start date, I managed to find the month of the transaction by using one of the timedelta columns. The months of the transactions are used for cross-validation, leave one month out and train on the others. I was also planning to make sure that I only have out of folds months that are ahead of time (as predicting backwards didn't feel right) but in the end I discarded this idea due to time considerations and just naively kept one month out. 
+
+Naturally, with any modelling solution there are blockers and things that don't go as expected. K-fold cross validation was working well on out of fold data, with an accuracy of 98\% (using AUC) but not so well on the test dataset, with only around 90\% accuracy on the test set. On top of this issue, the running time of K-fold cross validation, using 6 folds was over 8 hours, which was impossible to work with. Luckily, I managed to get access to a machine with GPU, which made K-fold cross-validation finish in about 14 minutes, which means I could experiment and see why the discrepancy between the two prediction sets. 
+
+There were two things that could cause the discrepancy between the two numbers: either the model was overfitting or the model was working with unseen data in the test set (given that the test set has 500,000 observations, likely that these are transactions are originating from different credit cards then the credit cards in the training set).
+To find the issue for this, I started by looking at the histogram for out of fold predictions and test predictions. These looked very different especially in extremes (probabilities close to 0 and probabilities close to 1) and this made me think that we're overfitting. 
+
+Overfitting in this case seemed tricky to deal with as it could be a combination of hyperparameters and existing features. If features in the train set were representative for the validation set, they might not necessarily be valid for the test set, so this could lead to overfitting. The rescue here was doing more reading on Kaggle and checking out notebooks of winning solutions where people have tried removing features one at a time and refitting the model until the culprit features are identified. It turns out that any credit card identifier (a combination of transaction time delta, address and email domain) will lead to overfitting due to the fact that only 16\% of credit cards in the train set are part of the test set. Removing this column (and the columns that are used to group by) increased the public test score to 95.843\% and the private test score to 93.154\% (our final score).  
+
+\subsection*{Contribution:} I worked on XGB as a model in Python, while others were focused on other models (or using Boosting in R) and compared the results at the end. I also did most of the work on feature engineering and provided the rest of the team with an updated version of the three input files. I did some minimal work on the team document (although probably 90\% of the work is the work of Zane Hassoun - his client pitch was quite creative, and we all enjoyed it!)
+
+
+
+\newpage
+\begin{thebibliography}{9}
+    \bibitem{kaggle}
+        https://www.kaggle.com/competitions/ieee-fraud-detection/overview
+        \emph{Kaggle IEEE Fraud detection competition}    
+\end{thebibliography}
+ 
+\end{document}\models
